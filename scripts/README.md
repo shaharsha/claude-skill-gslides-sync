@@ -18,7 +18,7 @@ Single-file Python script. Python 3.9+. Optional dep: `google-auth` (only for `-
 | `--sa-key <path>` | *none* | Service-account JSON. Recommended over gcloud ADC. |
 | `--rtl` | off | Apply RIGHT_TO_LEFT direction to every text shape |
 | `--no-links` | off | Skip slide-anchor + cross-pres rewriting (steps 2 and 3) |
-| `--max-image-width <pt>` | `720` | Max effective image width in points; image elements wider than this are scaled down. `0` to skip. |
+| `--max-image-width <pt>` | *page width* | Max effective image width in points. Default is auto-detected from the presentation's `pageSize` (e.g. 960pt for 16:9 widescreen). Larger images are scaled down preserving aspect, with center kept fixed. `0` to skip. |
 | `--cross-pres-map "name=ID"` | repeatable | Map a pptx filename fragment to a sibling Slides ID for cross-deck deep-linking. |
 
 ### What runs, in order
@@ -26,7 +26,7 @@ Single-file Python script. Python 3.9+. Optional dep: `google-auth` (only for `-
 1. **Push pptx** → resumable upload: `PATCH /upload/drive/v3/files/{id}?uploadType=resumable` to initiate, then `PUT` the bytes to the returned `Location` URL. `Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation`. Drive converts natively. Resumable (not simple media) is required because pptx routinely exceeds the 5 MB simple-upload guideline.
 2. **Fix slide-anchor links** → `GET /v1/presentations/{id}` to walk the structure, build `index → pageObjectId` and `slug → pageObjectId` maps, then `POST /v1/presentations/{id}:batchUpdate` with `updateTextStyle` requests rewriting `link.url` (matching broken patterns like `slide-N.xml`, `#slideN`) to `link.pageObjectId`. Skipped with `--no-links`.
 3. **Fix cross-pres links** → For each `--cross-pres-map`, `GET` the target Slides, build its slug + index maps, then rewrite source-deck text-runs whose link URL contains the source filename to a deep-link URL (`https://docs.google.com/presentation/d/{ID}/edit#slide=id.{OBJECT_ID}`). Skipped if no `--cross-pres-map`.
-4. **Resize oversized images** → For each image page-element whose effective width (`size.width × transform.scaleX`) exceeds `--max-image-width`, `updatePageElementTransform` with a uniform shrink factor preserving aspect and translate. Skipped with `--max-image-width 0`.
+4. **Resize oversized images** → For each image page-element whose effective width (`size.width × transform.scaleX`) exceeds `--max-image-width`, `updatePageElementTransform` with a uniform shrink factor preserving aspect; translate is recomputed so the image's center stays in the same place. Default `--max-image-width` is auto-detected from `presentation.pageSize.width`, so full-bleed images are not touched. Skipped with `--max-image-width 0`.
 5. **Apply RTL** → `updateParagraphStyle` with `direction: RIGHT_TO_LEFT` and `textRange.type: ALL` per text shape and table cell. Skipped by default; enable with `--rtl`.
 
 ### Error handling

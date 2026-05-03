@@ -72,7 +72,7 @@ If you already use `gdoc-sync` with an SA, **the same SA works** — just enable
 | `--sa-key <path>` | *none* | Path to a service-account JSON. If omitted, falls back to gcloud ADC. |
 | `--rtl` | off | Apply `direction: RIGHT_TO_LEFT` across every text shape (for Hebrew/Arabic) |
 | `--no-links` | off | Skip slide-anchor + cross-pres rewriting (steps 2 and 3) |
-| `--max-image-width <pt>` | `720` | Max effective image width in points (Slides 16:9 page is 720pt wide). Larger images are scaled down preserving aspect ratio. Set `0` to skip. |
+| `--max-image-width <pt>` | *page width* | Max effective image width in points. Default is auto-detected from the presentation's `pageSize` (e.g. 960pt for the standard 16:9 widescreen) — full-bleed images are left alone. Larger images are scaled down preserving aspect ratio, with the center kept fixed. Set `0` to skip. |
 | `--cross-pres-map "name=ID"` | repeatable | Map a pptx filename fragment to a sibling Slides ID; matching links get rewritten as deep-links. |
 
 Typical invocations:

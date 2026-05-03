@@ -80,9 +80,13 @@ If a cross-pres link points at an anchor that doesn't match the target's slide t
 
 ## Image resize uses the converted dimensions
 
-Step 4 reads each image page-element's `size.width × transform.scaleX` to compute its **effective** width on the slide. This is what's actually visible — the converted dimensions, not the source pixel size. Default `--max-image-width 720pt` matches Slides' standard 16:9 page width.
+Step 4 reads each image page-element's `size.width × transform.scaleX` to compute its **effective** width on the slide. This is what's actually visible — the converted dimensions, not the source pixel size.
 
-For **image-only decks** (full-bleed slides, each one a single image), the per-slide image is exactly 720pt wide — the resize step is a no-op. If your deck has a custom page size, adjust `--max-image-width` accordingly.
+**Default `--max-image-width` is auto-detected from the presentation's `pageSize.width`** — the actual page width. For Slides' standard 16:9 widescreen, that's **960pt** (12191675 EMU); for the older 4:3, it's 720pt. Detecting at runtime means full-bleed images are not touched regardless of the page size you chose.
+
+The resize preserves aspect ratio uniformly and **keeps the image's center fixed** — important for centered or full-bleed images, since pptx-converted images often have non-zero translate offsets baked in. (The first version of this script kept the original translate, which shifted resized images into the top-left quadrant of the slide. Fixed.)
+
+For **image-only decks** (full-bleed slides, each one a single image), the per-slide image is exactly the page width — the resize step is a no-op.
 
 ## RTL applies per text shape
 

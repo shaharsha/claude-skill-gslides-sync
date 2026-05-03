@@ -449,14 +449,22 @@ def _unit_to_pt(magnitude: float, unit: str) -> float:
     return magnitude  # unknown unit; treat as pt
 
 
-def resize_oversized_images(token: str, pres_id: str, max_width_pt: float) -> int:
+def resize_oversized_images(token: str, pres_id: str, max_width_pt) -> int:
     """Step 4: shrink images whose effective width exceeds max_width_pt.
 
-    Effective width = size.width * transform.scaleX. We rescale uniformly to
-    preserve aspect, recompute translate so the image stays at its top-left
-    anchor.
+    Effective width = size.width * transform.scaleX. Rescale uniformly to
+    preserve aspect; recompute translate so the image's center stays fixed.
+
+    If max_width_pt is None (default), use the presentation's actual page
+    width — so an image sized exactly to fill the slide is not shrunk.
     """
     pres = api(token, "GET", f"https://slides.googleapis.com/v1/presentations/{pres_id}")
+
+    if max_width_pt is None:
+        page_size = pres.get("pageSize", {})
+        pw = page_size.get("width", {})
+        max_width_pt = _unit_to_pt(pw.get("magnitude", 720), pw.get("unit", "EMU"))
+        print(f"   ↳ using page width {max_width_pt:.1f}pt as max-image-width default")
 
     requests = []
     resized = 0
@@ -475,11 +483,30 @@ def resize_oversized_images(token: str, pres_id: str, max_width_pt: float) -> in
             scale_x = tr.get("scaleX", 1) or 1
             scale_y = tr.get("scaleY", 1) or 1
             eff_w = base_w * scale_x
-            if eff_w <= max_width_pt:
+            eff_h = base_h * scale_y
+            if eff_w <= max_width_pt + 0.5:  # tolerate sub-pt rounding
                 continue
             shrink = max_width_pt / eff_w
             new_scale_x = scale_x * shrink
             new_scale_y = scale_y * shrink
+            # Translate is in EMU (or whatever transform.unit is). base_w/base_h
+            # are already in pt above; convert center delta back to the
+            # transform's native unit so we shift correctly.
+            tr_unit = tr.get("unit", "EMU")
+            cur_tx = tr.get("translateX", 0) or 0
+            cur_ty = tr.get("translateY", 0) or 0
+            # Width/height delta in pt, then back to tr_unit for translate
+            dw_pt = eff_w * (1 - shrink)
+            dh_pt = eff_h * (1 - shrink)
+            if tr_unit == "EMU":
+                dw_native = dw_pt * 914400 / 72
+                dh_native = dh_pt * 914400 / 72
+            else:
+                dw_native = dw_pt
+                dh_native = dh_pt
+            # Keep image centered: shift translate by half the width/height delta
+            new_tx = cur_tx + dw_native / 2
+            new_ty = cur_ty + dh_native / 2
             requests.append({
                 "updatePageElementTransform": {
                     "objectId": el["objectId"],
@@ -488,9 +515,9 @@ def resize_oversized_images(token: str, pres_id: str, max_width_pt: float) -> in
                         "scaleY": new_scale_y,
                         "shearX": tr.get("shearX", 0),
                         "shearY": tr.get("shearY", 0),
-                        "translateX": tr.get("translateX", 0),
-                        "translateY": tr.get("translateY", 0),
-                        "unit": tr.get("unit", "EMU"),
+                        "translateX": new_tx,
+                        "translateY": new_ty,
+                        "unit": tr_unit,
                     },
                     "applyMode": "ABSOLUTE",
                 },
@@ -551,8 +578,8 @@ def main() -> int:
                         help="Apply RIGHT_TO_LEFT direction to every text shape (for Hebrew/Arabic decks)")
     parser.add_argument("--no-links", action="store_true",
                         help="Skip slide-anchor + cross-pres rewriting (steps 2 and 3)")
-    parser.add_argument("--max-image-width", type=float, default=720.0,
-                        help="Max image width in points (default 720pt = 16:9 page width); larger images are scaled down preserving aspect ratio. Set 0 to skip.")
+    parser.add_argument("--max-image-width", type=float, default=None,
+                        help="Max image width in points; larger images are scaled down preserving aspect ratio (image stays centered). Default: the presentation's actual page width (e.g. 960pt for default 16:9), so full-bleed images are not touched. Set 0 to skip.")
     parser.add_argument("--cross-pres-map", action="append", default=[], metavar="NAME=PRES_ID",
                         help="Map a pptx filename (or path fragment that appears in cross-deck link URLs) to a sibling Google Slides ID. Repeatable. Cross-pres links get rewritten to deep-link into the target Slides at the matching slide. Example: --cross-pres-map 'spec.pptx=1AbC...'")
     args = parser.parse_args()
@@ -580,7 +607,7 @@ def main() -> int:
         print("[2/5] Skipped slide-anchor rewriting (--no-links)")
         print("[3/5] Skipped cross-pres rewriting (--no-links)")
 
-    if args.max_image_width > 0:
+    if args.max_image_width is None or args.max_image_width > 0:
         resize_oversized_images(token, args.pres_id, args.max_image_width)
     else:
         print("[4/5] Skipped image resize (--max-image-width 0)")
